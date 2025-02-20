@@ -1,8 +1,6 @@
 streamlit
+opencv-python-headless
 easyocr
 pandas
-opencv-python
-pillow
 numpy
-flask
-opencv-python-headless
+Pillow
