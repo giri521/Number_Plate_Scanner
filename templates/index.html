@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Number Plate Recognition</title>
+    <style>
+        /* Import Google Font */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: url('https://source.unsplash.com/1600x900/?road,car') no-repeat center center/cover;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            margin: 0;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            width: 90%;
+            max-width: 600px;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+            color: #fff;
+        }
+
+        h2 {
+            font-weight: 600;
+            margin-bottom: 15px;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 10px;
+            border: 2px solid #fff;
+        }
+
+        canvas {
+            display: none;
+        }
+
+        .extracted-text {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffeb3b;
+            margin: 10px 0;
+        }
+
+        .details-container {
+            margin-top: 20px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        th, td {
+            padding: 10px;
+            border: 1px solid #fff;
+            text-align: left;
+            color: #fff;
+        }
+
+        th {
+            background-color: rgba(255, 255, 255, 0.3);
+            font-weight: bold;
+        }
+
+        .not-found {
+            color: red;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Live Number Plate Recognition</h2>
+        <video id="camera" autoplay></video>
+        <canvas id="snapshot"></canvas>
+        <p class="extracted-text">Extracted Text: <span id="extracted-text">Waiting...</span></p>
+        <div class="details-container" id="vehicle-details">
+            <p class="not-found">Waiting for number plate detection...</p>
+        </div>
+    </div>
+
+    <script>
+        const video = document.getElementById("camera");
+        const canvas = document.getElementById("snapshot");
+        const extractedText = document.getElementById("extracted-text");
+        const vehicleDetails = document.getElementById("vehicle-details");
+
+        // Start camera stream
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(stream => { video.srcObject = stream; })
+            .catch(error => { console.error("Error accessing camera:", error); });
+
+        let lastExtractedText = "";
+
+        // Capture image every 3 seconds
+        setInterval(() => {
+            const context = canvas.getContext("2d");
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                const formData = new FormData();
+                formData.append("image", blob, "capture.jpg");
+
+                fetch("/capture", {
+                    method: "POST",
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.text !== lastExtractedText && data.text) {
+                        lastExtractedText = data.text;
+                        extractedText.textContent = data.text;
+
+                        if (data.details && !data.details.error) {
+                            let table = "<table>";
+                            Object.entries(data.details).forEach(([key, value]) => {
+                                table += `<tr><th>${key}</th><td>${value}</td></tr>`;
+                            });
+                            table += "</table>";
+                            vehicleDetails.innerHTML = table;
+                        } else {
+                            vehicleDetails.innerHTML = `<p class="not-found">${data.details.error || "Vehicle not found"}</p>`;
+                        }
+                    }
+                });
+            }, "image/jpeg");
+        }, 3000); // Capture every 3 seconds
+
+    </script>
+
+</body>
+</html>
