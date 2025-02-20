@@ -1,46 +1,57 @@
 import streamlit as st
 import easyocr
-import cv2
-import numpy as np
-from PIL import Image
 import pandas as pd
+import numpy as np
+import os
+import re
+from PIL import Image
 
-# Load dataset
-df = pd.read_excel("vehicle_data.xlsx")  # Ensure the dataset is in the same directory
-
-# Initialize OCR
+# Initialize EasyOCR
 reader = easyocr.Reader(['en'])
 
-def extract_number_plate(image):
-    """Extract text from the image using EasyOCR"""
-    image = np.array(image.convert('RGB'))
-    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    results = reader.readtext(gray)
+# Load dataset
+df = pd.read_excel("vehicle_registration_data_complete.xlsx", dtype=str)
+df["Plate Number Cleaned"] = df["Plate Number"].astype(str).str.replace(r"[^A-Za-z0-9]", "", regex=True).str.upper().str.strip()
 
-    detected_texts = [text[1] for text in results if len(text[1]) >= 6]
-    return " ".join(detected_texts)
+# Function to clean OCR text
+def clean_text(text):
+    return "".join(re.findall(r"[A-Za-z0-9]+", text)).upper()
 
 # Streamlit UI
-st.title("📸 Number Plate Scanner")
+st.set_page_config(page_title="Number Plate Scanner", layout="centered")
+st.title("🚗 Number Plate Scanner")
 
-uploaded_image = st.file_uploader("Upload a Number Plate Image", type=["jpg", "png", "jpeg"])
+uploaded_file = st.file_uploader("Upload a vehicle number plate image", type=["png", "jpg", "jpeg"])
 
-if uploaded_image:
-    image = Image.open(uploaded_image)
+if uploaded_file is not None:
+    # Display uploaded image
+    image = Image.open(uploaded_file)
     st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if st.button("🔍 Scan Number Plate"):
-        plate_text = extract_number_plate(image)
-        if plate_text:
-            st.success(f"Detected Number Plate: **{plate_text}**")
+    # Save file temporarily
+    temp_filepath = "temp_image.jpg"
+    image.save(temp_filepath)
 
-            # Search for details in the dataset
-            vehicle_details = df[df['Number Plate'] == plate_text]
-            if not vehicle_details.empty:
-                st.subheader("Vehicle Details:")
-                st.write(vehicle_details.to_dict(orient="records"))
-            else:
-                st.warning("No details found for this number plate.")
-        else:
-            st.error("Number plate not detected. Try another image.")
+    # Perform OCR
+    with st.spinner("Extracting text from image..."):
+        result = reader.readtext(temp_filepath)
+        extracted_text = clean_text("".join([text[1] for text in result]))
 
+    # Display extracted text
+    st.subheader("📌 Extracted Text:")
+    st.write(f"**{extracted_text}**")
+
+    # Search in dataset
+    vehicle_info = df[df["Plate Number Cleaned"] == extracted_text]
+
+    if not vehicle_info.empty:
+        details = vehicle_info.iloc[0].to_dict()
+        st.success("✅ Vehicle Found!")
+        st.subheader("🚘 Vehicle Details:")
+        for key, value in details.items():
+            st.write(f"**{key}:** {value}")
+    else:
+        st.error("❌ Vehicle not found in the database.")
+
+    # Delete temporary file
+    os.remove(temp_filepath)
