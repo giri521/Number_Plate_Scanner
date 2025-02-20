@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+import streamlit as st
 import os
 import easyocr
 import pandas as pd
