@@ -1,0 +1,6 @@
+streamlit
+easyocr
+pandas
+opencv-python
+pillow
+numpy
