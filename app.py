@@ -1,52 +1,46 @@
 import streamlit as st
-import os
 import easyocr
+import cv2
+import numpy as np
+from PIL import Image
 import pandas as pd
-import re
-from werkzeug.utils import secure_filename
-
-app = Flask(__name__)
-
-UPLOAD_FOLDER = "static/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-
-# Initialize EasyOCR
-reader = easyocr.Reader(['en'])
 
 # Load dataset
-df = pd.read_excel("vehicle_registration_data_complete.xlsx", dtype=str)
-df["Plate Number Cleaned"] = df["Plate Number"].astype(str).str.replace(r"[^A-Za-z0-9]", "", regex=True).str.upper().str.strip()
+df = pd.read_excel("vehicle_data.xlsx")  # Ensure the dataset is in the same directory
 
-def clean_text(text):
-    return "".join(re.findall(r"[A-Za-z0-9]+", text)).upper()  # Remove special characters
+# Initialize OCR
+reader = easyocr.Reader(['en'])
 
-@app.route("/")
-def index():
-    return render_template("index.html", vehicle_info=None)
+def extract_number_plate(image):
+    """Extract text from the image using EasyOCR"""
+    image = np.array(image.convert('RGB'))
+    gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+    results = reader.readtext(gray)
 
-@app.route("/capture", methods=["POST"])
-def capture():
-    if "image" not in request.files:
-        return jsonify({"error": "No image received"})
+    detected_texts = [text[1] for text in results if len(text[1]) >= 6]
+    return " ".join(detected_texts)
 
-    file = request.files["image"]
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-    file.save(filepath)
+# Streamlit UI
+st.title("📸 Number Plate Scanner")
 
-    # Perform OCR
-    result = reader.readtext(filepath)
-    extracted_text = clean_text("".join([text[1] for text in result]))
+uploaded_image = st.file_uploader("Upload a Number Plate Image", type=["jpg", "png", "jpeg"])
 
-    # Search in dataset
-    vehicle_info = df[df["Plate Number Cleaned"] == extracted_text]
+if uploaded_image:
+    image = Image.open(uploaded_image)
+    st.image(image, caption="Uploaded Image", use_column_width=True)
 
-    if not vehicle_info.empty:
-        details = vehicle_info.iloc[0].to_dict()
-        return jsonify({"text": extracted_text, "details": details, "image_path": filepath})
-    else:
-        return jsonify({"text": extracted_text, "details": {"error": "Vehicle not found"}, "image_path": filepath})
+    if st.button("🔍 Scan Number Plate"):
+        plate_text = extract_number_plate(image)
+        if plate_text:
+            st.success(f"Detected Number Plate: **{plate_text}**")
 
-if __name__ == "__main__":
-    app.run(debug=True)
+            # Search for details in the dataset
+            vehicle_details = df[df['Number Plate'] == plate_text]
+            if not vehicle_details.empty:
+                st.subheader("Vehicle Details:")
+                st.write(vehicle_details.to_dict(orient="records"))
+            else:
+                st.warning("No details found for this number plate.")
+        else:
+            st.error("Number plate not detected. Try another image.")
+
