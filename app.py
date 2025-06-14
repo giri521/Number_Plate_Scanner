@@ -1,10 +1,15 @@
-import streamlit as st
+from flask import Flask, render_template, request, jsonify
+import os
 import easyocr
 import pandas as pd
-import numpy as np
-import os
 import re
-from PIL import Image
+from werkzeug.utils import secure_filename
+
+app = Flask(__name__)
+
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
 # Initialize EasyOCR
 reader = easyocr.Reader(['en'])
@@ -13,45 +18,35 @@ reader = easyocr.Reader(['en'])
 df = pd.read_excel("vehicle_registration_data_complete.xlsx", dtype=str)
 df["Plate Number Cleaned"] = df["Plate Number"].astype(str).str.replace(r"[^A-Za-z0-9]", "", regex=True).str.upper().str.strip()
 
-# Function to clean OCR text
 def clean_text(text):
-    return "".join(re.findall(r"[A-Za-z0-9]+", text)).upper()
+    return "".join(re.findall(r"[A-Za-z0-9]+", text)).upper()  # Remove special characters
 
-# Streamlit UI
-st.set_page_config(page_title="Number Plate Scanner", layout="centered")
-st.title("🚗 Number Plate Scanner")
+@app.route("/")
+def index():
+    return render_template("index.html", vehicle_info=None)
 
-uploaded_file = st.file_uploader("Upload a vehicle number plate image", type=["png", "jpg", "jpeg"])
+@app.route("/capture", methods=["POST"])
+def capture():
+    if "image" not in request.files:
+        return jsonify({"error": "No image received"})
 
-if uploaded_file is not None:
-    # Display uploaded image
-    image = Image.open(uploaded_file)
-    st.image(image, caption="Uploaded Image", use_column_width=True)
-
-    # Save file temporarily
-    temp_filepath = "temp_image.jpg"
-    image.save(temp_filepath)
+    file = request.files["image"]
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    file.save(filepath)
 
     # Perform OCR
-    with st.spinner("Extracting text from image..."):
-        result = reader.readtext(temp_filepath)
-        extracted_text = clean_text("".join([text[1] for text in result]))
-
-    # Display extracted text
-    st.subheader("📌 Extracted Text:")
-    st.write(f"**{extracted_text}**")
+    result = reader.readtext(filepath)
+    extracted_text = clean_text("".join([text[1] for text in result]))
 
     # Search in dataset
     vehicle_info = df[df["Plate Number Cleaned"] == extracted_text]
 
     if not vehicle_info.empty:
         details = vehicle_info.iloc[0].to_dict()
-        st.success("✅ Vehicle Found!")
-        st.subheader("🚘 Vehicle Details:")
-        for key, value in details.items():
-            st.write(f"**{key}:** {value}")
+        return jsonify({"text": extracted_text, "details": details, "image_path": filepath})
     else:
-        st.error("❌ Vehicle not found in the database.")
+        return jsonify({"text": extracted_text, "details": {"error": "Vehicle not found"}, "image_path": filepath})
 
-    # Delete temporary file
-    os.remove(temp_filepath)
+if __name__ == "__main__":
+    app.run(debug=True)
