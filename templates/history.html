@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .history-item {
+            margin-bottom: 10px;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            transition: all 0.3s;
+        }
+        .history-item:hover {
+            background-color: #e9ecef;
+        }
+        .history-image-thumb {
+            max-width: 100px;
+            max-height: 75px;
+            border-radius: 3px;
+        }
+        .modal-image {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .detail-row {
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #eee;
+        }
+        .detail-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .detail-value {
+            color: #212529;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <h1 class="text-center mb-4">Scan History</h1>
+        
+        <div class="row">
+            <div class="col-md-10 mx-auto">
+                <a href="/" class="btn btn-primary mb-4">Back to Scanner</a>
+                
+                {% if not history %}
+                    <div class="alert alert-info">No scan history found</div>
+                {% else %}
+                    {% for entry in history %}
+                        <div class="history-item d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                {% if entry.image_path %}
+                                <img src="{{ url_for('static', filename='uploads/' + entry.image_path.split('/')[-1]) }}" 
+                                     class="history-image-thumb img-fluid me-3" 
+                                     alt="Scanned plate">
+                                {% endif %}
+                                <div>
+                                    <h5 class="mb-1">{{ entry.plate }}</h5>
+                                    <small class="text-muted">{{ entry.timestamp|format_datetime }}</small>
+                                </div>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-2" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#detailsModal{{ loop.index }}">
+                                    View Details
+                                </button>
+                                <a href="/download/{{ entry.plate }}" class="btn btn-sm btn-success">
+                                    Download PDF
+                                </a>
+                            </div>
+                        </div>
+
+                        <!-- Modal for this entry -->
+                        <div class="modal fade" id="detailsModal{{ loop.index }}" tabindex="-1" aria-hidden="true">
+                            <div class="modal-dialog modal-lg">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title">Vehicle Details: {{ entry.plate }}</h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <div class="row">
+                                            {% if entry.image_path %}
+                                            <div class="col-md-6 mb-3">
+                                                <img src="{{ url_for('static', filename='uploads/' + entry.image_path.split('/')[-1]) }}" 
+                                                     class="modal-image img-fluid" 
+                                                     alt="Scanned plate">
+                                            </div>
+                                            {% endif %}
+                                            <div class="col-md-{% if entry.image_path %}6{% else %}12{% endif %}">
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Owner:</span>
+                                                    <span class="detail-value">{{ entry.owner }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Model:</span>
+                                                    <span class="detail-value">{{ entry.model }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Color:</span>
+                                                    <span class="detail-value">{{ entry.color }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Address:</span>
+                                                    <span class="detail-value">{{ entry.address }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Registration Year:</span>
+                                                    <span class="detail-value">{{ entry.registration_year }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Expiry Date:</span>
+                                                    <span class="detail-value">{{ entry.expiry }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">RC Number:</span>
+                                                    <span class="detail-value">{{ entry.rc_number }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">License Number:</span>
+                                                    <span class="detail-value">{{ entry.license_number }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Chassis Number:</span>
+                                                    <span class="detail-value">{{ entry.chassis_number }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Engine Number:</span>
+                                                    <span class="detail-value">{{ entry.engine_number }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Seating Capacity:</span>
+                                                    <span class="detail-value">{{ entry.seating_capacity }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">Fuel Type:</span>
+                                                    <span class="detail-value">{{ entry.fuel_type }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">RTO:</span>
+                                                    <span class="detail-value">{{ entry.rto }}</span>
+                                                </div>
+                                                <div class="detail-row">
+                                                    <span class="detail-label">State:</span>
+                                                    <span class="detail-value">{{ entry.state }}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                        <a href="/download/{{ entry.plate }}" class="btn btn-primary">
+                                            Download PDF
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
