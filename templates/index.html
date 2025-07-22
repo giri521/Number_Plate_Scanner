@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>🚘 Number Plate Scanner</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  <style>
+    body {
+      background-color: #f3f4f6;
+    }
+    .container {
+      margin-top: 20px;
+    }
+    #video {
+      width: 100%;
+      border-radius: 8px;
+      background-color: #000;
+    }
+    .preview-img {
+      max-width: 100%;
+      height: auto;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+    }
+    .section-title {
+      font-weight: bold;
+      font-size: 18px;
+      margin-top: 20px;
+    }
+    .history-box {
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      padding: 10px;
+      background: #ffffff;
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .history-box:hover {
+      background-color: #f8f9fa;
+      transform: translateX(2px);
+    }
+    #details {
+      min-height: 200px;
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .timestamp {
+      font-size: 0.8rem;
+      color: #6c757d;
+    }
+    .detail-item {
+      margin-bottom: 8px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+    .detail-label {
+      font-weight: bold;
+      color: #343a40;
+      display: inline-block;
+      width: 140px;
+    }
+    .plate-display {
+      font-size: 1.2rem;
+      font-weight: bold;
+      color: #0d6efd;
+      margin-bottom: 10px;
+    }
+    #noDetailsMessage {
+      color: #6c757d;
+      font-style: italic;
+    }
+    .capture-status {
+      font-size: 0.9rem;
+      color: #6c757d;
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-dark px-3">
+    <span class="navbar-brand">🚘 Number Plate Scanner</span>
+    <a href="/history_page" class="btn btn-light btn-sm">View Full History</a>
+  </nav>
+
+  <div class="container">
+    <div class="row">
+
+      <!-- LEFT SECTION -->
+      <div class="col-md-6">
+        <div class="mb-4">
+          <h5 class="section-title">📷 Live Camera</h5>
+          <video id="video" autoplay playsinline></video>
+          <div class="d-flex justify-content-between mt-2">
+            <button id="captureBtn" class="btn btn-primary">
+              <i class="bi bi-camera"></i> Capture Now
+            </button>
+            <div class="capture-status">
+              Auto-capturing every 5 seconds...
+            </div>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <h5 class="section-title">📄 Upload Image</h5>
+          <input type="file" id="upload" class="form-control" accept="image/*"/>
+          <img id="preview" class="preview-img" style="display:none;"/>
+        </div>
+
+        <div class="mb-4">
+          <h5 class="section-title">✍️ Manual Entry</h5>
+          <div class="input-group">
+            <input type="text" id="manual" class="form-control" placeholder="e.g. KA50YI2511" maxlength="10"/>
+            <button class="btn btn-primary" onclick="submitManual()">Submit</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT SECTION -->
+      <div class="col-md-6">
+        <h5 class="section-title">📄 Vehicle Details</h5>
+        <div class="plate-display" id="extracted_text">Waiting for scan...</div>
+        <div id="details" class="p-3 border rounded">
+          <p id="noDetailsMessage">No vehicle details available yet. Scan a number plate to see details here.</p>
+          <div id="detailsContent" style="display:none;"></div>
+        </div>
+        <a id="pdfLink" href="#" class="btn btn-success mt-3" target="_blank" style="display:none;">
+          <i class="bi bi-file-earmark-pdf"></i> Download PDF Report
+        </a>
+
+        <h5 class="mt-4 section-title">📌 Recent Scans</h5>
+        <div id="history-list">
+          <p class="text-muted">No recent scans yet</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // DOM Elements
+    const video = document.getElementById("video");
+    const captureBtn = document.getElementById("captureBtn");
+    const extractedText = document.getElementById("extracted_text");
+    const detailsBox = document.getElementById("details");
+    const detailsContent = document.getElementById("detailsContent");
+    const noDetailsMessage = document.getElementById("noDetailsMessage");
+    const historyList = document.getElementById("history-list");
+    const pdfLink = document.getElementById("pdfLink");
+    const captureStatus = document.querySelector(".capture-status");
+
+    // State variables
+    let currentDetails = null;
+    let cameraInterval = null;
+    let lastSuccessfulScan = null;
+
+    // Initialize camera
+    function initCamera() {
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+          video.srcObject = stream;
+          startAutoCapture();
+        })
+        .catch(err => {
+          console.error("Camera access denied:", err);
+          captureStatus.textContent = "Camera access denied. Please allow camera permissions.";
+          captureStatus.style.color = "#dc3545";
+        });
+    }
+
+    // Start auto capture every 5 seconds
+    function startAutoCapture() {
+      if (cameraInterval) clearInterval(cameraInterval);
+      cameraInterval = setInterval(() => {
+        captureFrameAndSend();
+      }, 5000);
+    }
+
+    // Manual capture button
+    captureBtn.addEventListener("click", () => {
+      captureFrameAndSend(true);
+    });
+
+    // Capture frame and send to server
+    function captureFrameAndSend(isManual = false) {
+      if (!video.srcObject) return;
+      
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      
+      if (isManual) {
+        captureStatus.textContent = "Processing manual capture...";
+        captureStatus.style.color = "#0d6efd";
+      }
+      
+      canvas.toBlob(blob => {
+        const formData = new FormData();
+        formData.append("image", blob, "camera.jpg");
+        
+        fetch("/camera", {
+          method: "POST",
+          body: formData
+        })
+        .then(res => {
+          if (!res.ok) throw new Error("Server error");
+          return res.json();
+        })
+        .then(data => {
+          if (data.extracted_text && data.details && !data.details.error) {
+            showResponse(data);
+            lastSuccessfulScan = data.extracted_text;
+            if (isManual) {
+              captureStatus.textContent = "Manual capture successful!";
+              captureStatus.style.color = "#198754";
+              setTimeout(() => {
+                captureStatus.textContent = "Auto-capturing every 5 seconds...";
+                captureStatus.style.color = "#6c757d";
+              }, 2000);
+            }
+          } else if (isManual) {
+            captureStatus.textContent = "No plate detected in manual capture";
+            captureStatus.style.color = "#dc3545";
+            setTimeout(() => {
+              captureStatus.textContent = "Auto-capturing every 5 seconds...";
+              captureStatus.style.color = "#6c757d";
+            }, 2000);
+          }
+        })
+        .catch(err => {
+          console.error("Capture error:", err);
+          if (isManual) {
+            captureStatus.textContent = "Error processing capture";
+            captureStatus.style.color = "#dc3545";
+            setTimeout(() => {
+              captureStatus.textContent = "Auto-capturing every 5 seconds...";
+              captureStatus.style.color = "#6c757d";
+            }, 2000);
+          }
+        });
+      }, "image/jpeg");
+    }
+
+    // Handle file upload
+    document.getElementById("upload").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function (evt) {
+          const img = document.getElementById("preview");
+          img.src = evt.target.result;
+          img.style.display = "block";
+        };
+        reader.readAsDataURL(file);
+
+        const formData = new FormData();
+        formData.append("image", file);
+        fetch("/upload", {
+          method: "POST",
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          showResponse(data);
+          if (data.extracted_text && data.details && !data.details.error) {
+            lastSuccessfulScan = data.extracted_text;
+          }
+        })
+        .catch(err => console.error("Upload error:", err));
+      }
+    });
+
+    // Handle manual submission
+    function submitManual() {
+      const plate = document.getElementById("manual").value.trim().toUpperCase();
+      if (!plate) return;
+      
+      const formData = new FormData();
+      formData.append("plate", plate);
+      fetch("/manual", {
+        method: "POST",
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        showResponse(data);
+        if (data.extracted_text && data.details && !data.details.error) {
+          lastSuccessfulScan = data.extracted_text;
+        }
+      })
+      .catch(err => console.error("Manual submission error:", err));
+    }
+
+    // Show response and update UI
+    function showResponse(data) {
+      // Only update if we have new valid data
+      if (data.extracted_text && data.details && !data.details.error) {
+        currentDetails = data;
+        extractedText.textContent = data.extracted_text;
+        
+        // Format details
+        const detailsHtml = `
+          <div class="detail-item">
+            <span class="detail-label">Owner:</span> ${data.details.owner || 'N/A'}
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Model:</span> ${data.details.model || 'N/A'}
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Color:</span> ${data.details.color || 'N/A'}
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Registration Year:</span> ${data.details.registration_year || 'N/A'}
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Expiry Date:</span> ${data.details.expiry || 'N/A'}
+          </div>
+          <div class="detail-item">
+            <span class="detail-label">Address:</span> ${data.details.address || 'N/A'}
+          </div>
+        `;
+        
+        detailsContent.innerHTML = detailsHtml;
+        noDetailsMessage.style.display = "none";
+        detailsContent.style.display = "block";
+        
+        if (data.pdf_url) {
+          pdfLink.href = data.pdf_url;
+          pdfLink.style.display = "inline-block";
+        } else {
+          pdfLink.style.display = "none";
+        }
+        
+        // Save to history
+        addToHistory({
+          plate: data.extracted_text,
+          timestamp: new Date().toISOString(),
+          details: data.details
+        });
+      } else if (data.details?.error) {
+        // Only show errors for manual submissions or uploads
+        // Don't show errors for auto-capture (camera)
+        if (!data.fromCamera) {
+          detailsBox.innerHTML = `
+            <p class="text-danger">${data.details.error}</p>
+            ${data.extracted_text ? `<p>Scanned plate: <strong>${data.extracted_text}</strong></p>` : ''}
+          `;
+        }
+      }
+    }
+
+    // History management
+    function addToHistory(entry) {
+      let history = JSON.parse(localStorage.getItem("vehicleHistory") || "[]");
+      
+      // Remove if already exists to avoid duplicates
+      history = history.filter(item => item.plate !== entry.plate);
+      
+      // Add new entry at beginning
+      history.unshift(entry);
+      
+      // Keep only last 10 entries
+      history = history.slice(0, 10);
+      
+      localStorage.setItem("vehicleHistory", JSON.stringify(history));
+      renderHistory(history);
+    }
+
+    function renderHistory(history) {
+      if (history.length === 0) {
+        historyList.innerHTML = '<p class="text-muted">No recent scans yet</p>';
+        return;
+      }
+      
+      historyList.innerHTML = history.map(item => `
+        <div class="history-box" onclick="loadHistoryItem('${item.plate}')">
+          <div class="d-flex justify-content-between">
+            <span class="plate-number">${item.plate}</span>
+            <span class="timestamp">${formatTime(item.timestamp)}</span>
+          </div>
+          <div class="model-text">${item.details?.model || 'Unknown model'}</div>
+        </div>
+      `).join("");
+    }
+
+    function loadHistoryItem(plate) {
+      const history = JSON.parse(localStorage.getItem("vehicleHistory") || "[]");
+      const item = history.find(i => i.plate === plate);
+      if (item) {
+        showResponse({
+          extracted_text: item.plate,
+          details: item.details || {},
+          pdf_url: `/download/${item.plate}`
+        });
+        lastSuccessfulScan = item.plate;
+      }
+    }
+
+    function formatTime(timestamp) {
+      const date = new Date(timestamp);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Initialize on page load
+    window.onload = () => {
+      initCamera();
+      
+      // Load any existing history
+      const history = JSON.parse(localStorage.getItem("vehicleHistory") || "[]");
+      renderHistory(history);
+      
+      // Enable manual submission on Enter key
+      document.getElementById("manual").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          submitManual();
+        }
+      });
+    };
+  </script>
+</body>
+</html>
