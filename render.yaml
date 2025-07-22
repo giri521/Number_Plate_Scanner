@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: vehicle-number-plate-scanner
+    env: python
+    plan: free
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: PORT
+        value: 5000
+    autoDeploy: true
